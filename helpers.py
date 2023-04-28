@@ -43,20 +43,22 @@ def simulate_soma(tau_s, C, v_rest, b, v_spike, tau_w, I_stim, T_refractory, sim
     neuron = b2.NeuronGroup(1, model=eqs, threshold="v>v_spike", reset="v=v_rest;w+=b", refractory=T_refractory,
                             method="euler")
     
-    print(neuron)
+    # print(neuron)
 
     # initial values of v and w is set here:
     neuron.v = v_rest
     neuron.w = 0.0 * b2.pA
 
     # Monitoring membrane voltage (v) and w
-    state_monitor = b2.StateMonitor(neuron, ["v", "w"], record=True)
+    #state_monitor = b2.StateMonitor(neuron, ["v", "w", "I_stim"], record=True)
+    # TODO: Find out if we have to record I_stim and how ??
+    #  all state monitor can record are {'v', 'lastspike', 'not_refractory', 'w'}
+    state_monitor = b2.StateMonitor(neuron, True, record=True)
     spike_monitor = b2.SpikeMonitor(neuron)
 
     # running simulation
     b2.run(simulation_time)
     return state_monitor, spike_monitor
-
 
 
 def plot_part_01(state_monitor, I, title=None):
@@ -93,7 +95,7 @@ def plot_part_01(state_monitor, I, title=None):
     plt.show()
 
 
-def plot_I_v_w(voltage_monitor, current, title=None, firing_threshold=None, legend_location=0):
+def plot_I_v_w(voltage_monitor, current, title=None, firing_threshold=None, legend_location=0, savefig = False):
     """plots voltage and current .
 
     Args:
@@ -120,7 +122,6 @@ def plot_I_v_w(voltage_monitor, current, title=None, firing_threshold=None, lege
     ax[0].set_ylabel("Input current [A]")
     ax[0].grid()
 
-
     # Plot the voltage v
     ax[1].plot(time_values_ms, voltage_monitor[0].v / b2.mV, lw=2)
     if firing_threshold is not None:
@@ -133,16 +134,98 @@ def plot_I_v_w(voltage_monitor, current, title=None, firing_threshold=None, lege
     ax[1].set_ylabel("Membrane Voltage [mV]")
     ax[1].grid()
 
-
-    #Plot the adaptive term w
+    # Plot the adaptive term w
     ax[2].plot(time_values_ms, voltage_monitor[0].w / b2.mV, lw=2)
     ax[2].set_xlabel("t [ms]")
-    ax[2].set_ylabel("Adaption Variable [???]")
+    ax[2].set_ylabel("Adaption Variable [A]")
     ax[2].grid()
-
 
     if title is not None:
         fig.suptitle(title)
 
     fig.tight_layout()
-    #fig.savefig()
+
+    if savefig:
+        plt.savefig("plots/" + title + ".png")
+    plt.show()
+
+
+########################## DENDRITIC COMPARTMENT ################################
+def simulate_dendritic(tau_d, C, v_rest, a, tau_w, E_d, D_d, g, I_stim, simulation_time=200 * b2.ms):
+    r"""
+    Simulation of the dendritic compartment using the following model equations
+
+    The Brian2 model equations are:
+
+    .. math::
+
+        \frac{dv}{dt} = -\frac{v-v_rest}{tau_d} + \frac{I_stim+w+gf(v)}{C}
+        \\
+        \frac{dw}{dt} = \frac{-w+a(v-v_rest)}{tau_w}
+        \\
+        f(v) = \frac{1}{1+e^-\frac{v-E_d}{D})}
+
+    Args:
+        tau_d (Quantity): membrane time scale
+        C (Quantity): membrane capacitance
+        v_rest (Quantity): resting potential
+        tau_w (Quantity): Adaptation time scale
+        a (Quantity): factor modulating the adaptation variable equation
+        E_d (Quantity): Sigmoid curve parameter
+        D_d (Quantity): Sigmoid curve parameter
+        g (Quantity): factor modulation the importance of the sigmoid in the voltage equation
+        I_stim (TimedArray): Input current
+        simulation_time (Quantity): Duration for which the model is simulated
+
+    Returns:
+        state_monitor:
+        A b2.StateMonitor for the variables "v" and "w"
+    """
+
+    # EXP-IF
+    eqs = """
+        dv/dt = (-(v-v_rest)/tau_d) + (I_stim(t,i)+w+g*(1 /(1+exp(-(v-E_d)/D_d))))/C : volt
+        dw/dt=(-w+a*(v-v_rest))/tau_w : amp
+        """
+    neuron = b2.NeuronGroup(1, model=eqs, method="euler")
+
+    # initial values of v and w is set here:
+    neuron.v = v_rest
+    neuron.w = 0.0 * b2.pA
+
+    # Monitoring membrane voltage (v) and w
+    state_monitor = b2.StateMonitor(neuron, ["v", "w"], record=True)
+
+    # running simulation
+    b2.run(simulation_time)
+
+    return state_monitor
+
+
+def extract_rising_voltage_trace(state_monitor):
+    voltage_array = b2.asarray(state_monitor.v)
+    voltage_array = np.squeeze(voltage_array)
+    id_max = voltage_array.argmax(axis=0)
+    rising_voltage = voltage_array[:id_max]
+
+    return rising_voltage
+
+
+def compute_finite_derivative(voltage_trace):
+    finite_derivative = np.zeros(voltage_trace.shape)
+    finite_derivative[0] = voltage_trace[0] # TODO: find out how to compute first data point
+    for i in range(1, voltage_trace.size):
+        finite_derivative[i] = voltage_trace[i] - voltage_trace[i-1]
+
+    return finite_derivative
+
+
+def plot_voltage_derivative_curve(voltage, derivative, title=None, save_figure=False):
+    plt.plot(voltage * 1000, derivative * 1000)
+    plt.xlabel("voltage [mA]")
+    plt.ylabel("finite difference derivative [mA/ms]")
+    plt.grid()
+    plt.title(title)
+    if save_figure:
+        plt.savefig("plots/" + title + ".png")
+    plt.show()
