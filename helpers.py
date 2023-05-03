@@ -61,93 +61,6 @@ def simulate_soma(tau_s, C, v_rest, b, v_spike, tau_w, I_stim, T_refractory, sim
     return state_monitor, spike_monitor
 
 
-def plot_part_01(state_monitor, I, title=None):
-    """Plots the state_monitor variables ["v", "I_e, "w"] vs. time.
-
-    Args:
-        state_monitor (StateMonitor): the data to plot
-        title (string, optional): plot title to display
-    """
-
-    #Plot Membrane Potential
-    plt.subplot(311)
-    plt.plot(state_monitor.t, state_monitor.v[0], lw=2)
-    plt.xlabel("t [ms]")
-    plt.ylabel("v [mV]")
-    plt.grid()
-
-    #Plot the adaptation term w
-    plt.subplot(312)
-    plt.plot(state_monitor.t, state_monitor.w[0], "pink", lw=2)
-    plt.xlabel("t (ms)")
-    plt.ylabel("act./inact.")
-    plt.legend(("w"))
-    plt.ylim((0, 1))
-    plt.grid()
-
-    plt.xlabel("t [ms]")
-    plt.ylabel("I [micro A]")
-    plt.grid()
-
-    if title is not None:
-        plt.suptitle(title)
-
-    plt.show()
-
-
-def plot_I_v_w(voltage_monitor, current, title=None, firing_threshold=None, legend_location=0, savefig = False):
-    """plots voltage and current .
-
-    Args:
-        voltage_monitor (StateMonitor): recorded voltage
-        current (TimedArray): injected current
-        title (string, optional): title of the figure
-        firing_threshold (Quantity, optional): if set to a value, the firing threshold is plotted.
-        legend_location (int): legend location. default = 0 (="best")
-
-    Returns:
-        the figure
-    """
-
-    assert isinstance(voltage_monitor, b2.StateMonitor), "voltage_monitor is not of type StateMonitor"
-    assert isinstance(current, b2.TimedArray), "current is not of type TimedArray"
-
-    time_values_ms = voltage_monitor.t / b2.ms
-
-    fig, ax = plt.subplots(3, 1)
-
-    # Plot the input current I
-    c = current(voltage_monitor.t, 0)
-    ax[0].plot(voltage_monitor.t / b2.ms, c, "r", lw=2)
-    ax[0].set_ylabel("Input current [A]")
-    ax[0].grid()
-
-    # Plot the voltage v
-    ax[1].plot(time_values_ms, voltage_monitor[0].v / b2.mV, lw=2)
-    if firing_threshold is not None:
-        ax[1].plot(
-            (voltage_monitor.t / b2.ms)[[0, -1]],
-            [firing_threshold / b2.mV, firing_threshold / b2.mV],
-            "r--", lw=2)
-        ax[1].legend(["vm", "firing threshold"], fontsize=12, loc=legend_location)
-        
-    ax[1].set_ylabel("Membrane Voltage [mV]")
-    ax[1].grid()
-
-    # Plot the adaptive term w
-    ax[2].plot(time_values_ms, voltage_monitor[0].w / b2.mV, lw=2)
-    ax[2].set_xlabel("t [ms]")
-    ax[2].set_ylabel("Adaption Variable [A]")
-    ax[2].grid()
-
-    if title is not None:
-        fig.suptitle(title)
-
-    fig.tight_layout()
-
-    if savefig:
-        plt.savefig("plots/" + title + ".png")
-    plt.show()
 
 
 ########################## DENDRITIC COMPARTMENT ################################
@@ -200,6 +113,62 @@ def simulate_dendritic(tau_d, C, v_rest, a, tau_w, E_d, D_d, g, I_stim, simulati
     b2.run(simulation_time)
 
     return state_monitor
+
+
+######################################### PLOTTING ######################################################
+def plot_I_v_w(voltage_monitor, current, title=None, firing_threshold=None, legend_location=0, savefig = False):
+    """plots voltage and current .
+
+    Args:
+        voltage_monitor (StateMonitor): recorded voltage
+        current (TimedArray): injected current
+        title (string, optional): title of the figure
+        firing_threshold (Quantity, optional): if set to a value, the firing threshold is plotted.
+        legend_location (int): legend location. default = 0 (="best")
+
+    Returns:
+        the figure
+    """
+
+    assert isinstance(voltage_monitor, b2.StateMonitor), "voltage_monitor is not of type StateMonitor"
+    assert isinstance(current, b2.TimedArray), "current is not of type TimedArray"
+
+    time_values_ms = voltage_monitor.t / b2.ms
+
+    fig, ax = plt.subplots(3, 1, figsize=(10, 7))
+
+    # Plot the input current I
+    c = current(voltage_monitor.t, 0)
+    ax[0].plot(voltage_monitor.t / b2.ms, c /b2.nA, "r", lw=2)
+    ax[0].set_ylabel("Input current [nA]", fontsize=12)
+    ax[0].grid()
+
+    # Plot the voltage v
+    ax[1].plot(time_values_ms, voltage_monitor[0].v / b2.mV, lw=2)
+    if firing_threshold is not None:
+        ax[1].plot(
+            (voltage_monitor.t / b2.ms)[[0, -1]],
+            [firing_threshold / b2.mV, firing_threshold / b2.mV],
+            "r--", lw=2)
+        ax[1].legend(["vm", "firing threshold"], fontsize=12, loc=legend_location)
+        
+    ax[1].set_ylabel("Membrane Voltage [mV]", fontsize=12)
+    ax[1].grid()
+
+    # Plot the adaptive term w
+    ax[2].plot(time_values_ms, voltage_monitor[0].w /b2.nA, lw=2)
+    ax[2].set_xlabel("t [ms]", fontsize=12)
+    ax[2].set_ylabel("Adaption Variable [nA]", fontsize=12)
+    ax[2].grid()
+
+    if title is not None:
+        fig.suptitle(title, fontsize=14)
+
+    fig.tight_layout()
+
+    if savefig:
+        plt.savefig("plots/" + title + ".png")
+    plt.show()
 
 
 def extract_rising_voltage_trace(state_monitor):
