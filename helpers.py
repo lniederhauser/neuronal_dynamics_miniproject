@@ -132,28 +132,9 @@ def compute_finite_derivative(voltage_trace):
 
 ######################################### TWO COMPARTMENT ######################################################
 def simulate_pyramidal_neuron(tau_s, tau_d, C_s, C_d, v_rest, b, v_spike, tau_w_s, tau_w_d, I,
-                              a, E_d, D_d, g, T_refractory, simulation_time=200 * b2.ms):
+                              a, E_d, D_d, g_d, g_s, c_d, T_refractory, simulation_time=200 * b2.ms):
     r"""
-    Simulation of the soma compartment using model equations and refractory period
-
-    The Brian2 model equations are:
-
-    .. math::
-
-        \frac{dv}{dt} = -\frac{v-v_rest}{tau_s} + \frac{I_stim+w}{C}
-        \\
-        \frac{dw}{dt} = \frac{-w}{tau_w}
-
-    Args:
-        tau_s (Quantity): membrane time scale
-        C (Quantity): membrane capacitance
-        v_rest (Quantity): resting potential
-        b (Quantity): Spike-triggered adaptation current (=increment of w after each spike)
-        v_spike (Quantity): voltage threshold for the spike condition
-        tau_w (Quantity): Adaptation time scale
-        I_s (TimedArray): Input current at Soma
-        T_refractory (Quantity): Refractory period
-        simulation_time (Quantity): Duration for which the model is simulated
+    Simulation of the two-model compartment using model equations and refractory period
 
     Returns:
         (state_monitor, spike_monitor):
@@ -162,25 +143,39 @@ def simulate_pyramidal_neuron(tau_s, tau_d, C_s, C_d, v_rest, b, v_spike, tau_w_
 
     # EXP-IF
     # "unless refractory" arg allows voltage to stay unchanged during the refractory period
+
+    zero_hz = 0 * b2.hertz
+    zero_ms = 0 * b2.ms
+    kernel_delay = 0.5 * b2.ms
+    kernel_up_time = 2 * b2.ms
+
     eqs = """
-        dv_s/dt = -(v_s - v_rest)/tau_s + (I(t,i) + w_s)/C_s : volt (unless refractory)
-        dw_s/dt =-w_s/tau_w_s : amp
-        dv_d/dt = -(v_d-v_rest)/tau_d + (I(t,i) + w_d + g*(1 /(1+exp(-(v_d-E_d)/D_d))))/C_d : volt
-        dw_d/dt=(-w_d + a * (v_d - v_rest))/tau_w_d : amp
+        dv_s/dt = -(v_s - v_rest)/tau_s + (I(t,i) + w_s + g_s * f)/C_s : volt (unless refractory)
+        dw_s/dt = -w_s/tau_w_s : amp
+        dv_d/dt = -(v_d-v_rest)/tau_d + (I(t,i) + w_d + g_d * f + c_d * K)/C_d : volt
+        dw_d/dt = (-w_d + a * (v_d - v_rest))/tau_w_d : amp
+        dt_p_1/dt = 0 : second
+        dt_p_2/dt = 0 : second
+        dK/dt = zero_hz : 1
+        f = 1 /(1 + exp(-(v_d-E_d)/D_d)) : 1
         """
 
-    neuron = b2.NeuronGroup(1, model=eqs, threshold="v_s>v_spike", reset="v_s=v_rest;w_s+=b;v_d=v_d;w_d=w_d", refractory=T_refractory,
-                            method="euler")
+    neuron = b2.NeuronGroup(1, model=eqs, threshold="v_s>v_spike", reset="v_s=v_rest;w_s+=b;v_d=v_d;w_d=w_d;t_p_1=t+kernel_delay", refractory=T_refractory,
+                            method="euler", events={'K_step_up': '(t > t_p_1) and (t_p_1 != zero_ms)', 
+                                                    'K_step_down': '(t > t_p_2) and (t_p_2 != zero_ms)'})
+    neuron.run_on_event('K_step_up', 'K = 1; t_p_2 = t_p_1 + kernel_up_time; t_p_1 = zero_ms')
+    neuron.run_on_event('K_step_down', 'K = 0; t_p_2 = zero_ms')
     
-    # print(neuron)
-
     # initial values of v and w is set here:
     neuron.v_s = v_rest
     neuron.w_s = 0.0 * b2.pA
     neuron.v_d = v_rest
     neuron.w_d = 0.0 * b2.pA
+    neuron.t_p_1 = 0 * b2.ms
+    neuron.t_p_2 = 0 * b2.ms
+    neuron.K = 0
 
-    state_monitor = b2.StateMonitor(neuron, ["v_s", "v_d", "w_s", "w_d"], record=True)
+    state_monitor = b2.StateMonitor(neuron, ["v_s", "v_d", "w_s", "w_d", "K"], record=True)
     #spike_monitor = b2.SpikeMonitor(neuron)
 
     b2.run(simulation_time)
@@ -287,7 +282,7 @@ def plot_pyramidal(voltage_monitor, current, title=None, firing_threshold=None, 
 
     time_values_ms = voltage_monitor.t / b2.ms
 
-    fig, ax = plt.subplots(5, 1, figsize=(10, 15))
+    fig, ax = plt.subplots(6, 1, figsize=(10, 18))
 
     # Plot the input current I
     c = current(voltage_monitor.t, 0)
@@ -313,15 +308,20 @@ def plot_pyramidal(voltage_monitor, current, title=None, firing_threshold=None, 
     ax[2].grid()
 
     # Plot the dendrite voltage v_d
-    ax[3].plot(time_values_ms, voltage_monitor[0].v_d /b2.nA, lw=2)
+    ax[3].plot(time_values_ms, voltage_monitor[0].v_d /b2.mV, lw=2)
     ax[3].set_ylabel("Dendrite Membrane Voltage [mV]", fontsize=12)
     ax[3].grid()
 
     # Plot the dendrite adaptive term w_d
     ax[4].plot(time_values_ms, voltage_monitor[0].w_d /b2.nA, lw=2)
-    ax[4].set_xlabel("t [ms]", fontsize=12)
     ax[4].set_ylabel("Dendrite Adaption Variable [nA]", fontsize=12)
     ax[4].grid()
+
+    # Plot the kernel K
+    ax[5].plot(time_values_ms, voltage_monitor[0].K, lw=2)
+    ax[5].set_xlabel("t [ms]", fontsize=12)
+    ax[5].set_ylabel("Kernel (unitless)", fontsize=12)
+    ax[5].grid()
 
     if title is not None:
         fig.suptitle(title, fontsize=14)
