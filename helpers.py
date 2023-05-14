@@ -114,6 +114,14 @@ def simulate_dendritic(tau_d, C, v_rest, a, tau_w, E_d, D_d, g, I_stim, simulati
 
 
 def extract_rising_voltage_trace(state_monitor):
+    """Extract the part of the voltage trace from the beginning until it reaches its maximum
+
+        Args:
+            state_monitor (StateMonitor): recorded voltage
+
+        Returns:
+            an array containing the recorded voltage up until it reaches its max
+    """
     voltage_array = b2.asarray(state_monitor.v)
     voltage_array = np.squeeze(voltage_array)
     id_max = voltage_array.argmax(axis=0)
@@ -123,6 +131,14 @@ def extract_rising_voltage_trace(state_monitor):
 
 
 def compute_finite_derivative(voltage_trace):
+    """Computes the finite derivative of the voltage trace, i.e. dV(t) = V(t)-V(t-1) for each time t. With dV(0) = V(0)
+
+        Args:
+            voltage_trace (StateMonitor): recorded voltage
+
+        Returns:
+            an array containing the finite derivative of voltage_trace
+        """
     finite_derivative = np.zeros(voltage_trace.shape)
     finite_derivative[0] = voltage_trace[0]
     for i in range(1, voltage_trace.size):
@@ -130,8 +146,10 @@ def compute_finite_derivative(voltage_trace):
 
     return finite_derivative
 
-######################################### TWO COMPARTMENT ######################################################
-def simulate_pyramidal_neuron(tau_s, tau_d, C_s, C_d, v_rest, b, v_spike, tau_w_s, tau_w_d, I,
+######################################### TWO COMPARTMENTS ######################################################
+
+
+def simulate_pyramidal_neuron(tau_s, tau_d, C_s, C_d, v_rest, b, v_spike, tau_w_s, tau_w_d, I_s, I_d,
                               a, E_d, D_d, g_d, g_s, c_d, T_refractory, simulation_time=200 * b2.ms):
     r"""
     Simulation of the two-model compartment using model equations and refractory period
@@ -150,9 +168,9 @@ def simulate_pyramidal_neuron(tau_s, tau_d, C_s, C_d, v_rest, b, v_spike, tau_w_
     kernel_up_time = 2 * b2.ms
 
     eqs = """
-        dv_s/dt = -(v_s - v_rest)/tau_s + (I(t,i) + w_s + g_s * f)/C_s : volt (unless refractory)
+        dv_s/dt = -(v_s - v_rest)/tau_s + (I_s(t,i) + w_s + g_s * f)/C_s : volt (unless refractory)
         dw_s/dt = -w_s/tau_w_s : amp
-        dv_d/dt = -(v_d-v_rest)/tau_d + (I(t,i) + w_d + g_d * f + c_d * K)/C_d : volt
+        dv_d/dt = -(v_d-v_rest)/tau_d + (I_d(t,i) + w_d + g_d * f + c_d * K)/C_d : volt
         dw_d/dt = (-w_d + a * (v_d - v_rest))/tau_w_d : amp
         dt_p_1/dt = 0 : second
         dt_p_2/dt = 0 : second
@@ -160,9 +178,9 @@ def simulate_pyramidal_neuron(tau_s, tau_d, C_s, C_d, v_rest, b, v_spike, tau_w_
         f = 1 /(1 + exp(-(v_d-E_d)/D_d)) : 1
         """
 
-    neuron = b2.NeuronGroup(1, model=eqs, threshold="v_s>v_spike", reset="v_s=v_rest;w_s+=b;v_d=v_d;w_d=w_d;t_p_1=t+kernel_delay", refractory=T_refractory,
-                            method="euler", events={'K_step_up': '(t > t_p_1) and (t_p_1 != zero_ms)', 
-                                                    'K_step_down': '(t > t_p_2) and (t_p_2 != zero_ms)'})
+    neuron = b2.NeuronGroup(1, model=eqs, threshold="v_s>v_spike", reset="v_s=v_rest;w_s+=b;v_d=v_d;w_d=w_d;t_p_1=t+kernel_delay",
+                            refractory=T_refractory, method="euler", events={'K_step_up': '(t > t_p_1) and (t_p_1 != zero_ms)',
+                                                                            'K_step_down': '(t > t_p_2) and (t_p_2 != zero_ms)'})
     neuron.run_on_event('K_step_up', 'K = 1; t_p_2 = t_p_1 + kernel_up_time; t_p_1 = zero_ms')
     neuron.run_on_event('K_step_down', 'K = 0; t_p_2 = zero_ms')
     
@@ -182,8 +200,44 @@ def simulate_pyramidal_neuron(tau_s, tau_d, C_s, C_d, v_rest, b, v_spike, tau_w_
     return state_monitor#, spike_monitor
 
 
+def get_EPSC_current(t_start, t_end, unit_time, amplitude, tau, append_zero=True):
+    """Creates an Excitatory Post-Synaptic Current (EPSC) shaped current
+
+    Args:
+        t_start (int): start of the EPSC current
+        t_end (int): end of the EPSC current
+        unit_time (Quantity, Time): unit of t_start and t_end. e.g. 0.1*brian2.ms
+        amplitude (Quantity, Current): maximum amplitude of EPSC current
+        tau (Quantity, Time): decay rate of the EPSC
+        append_zero (bool, optional): if true, 0Amp is appended at t_end+1. Without that
+            trailing 0, Brian reads out the last value in the array for all indices > t_end.
+
+
+    Returns:
+        TimedArray: Brian2.TimedArray
+    """
+    assert isinstance(t_start, int), "t_start_ms must be of type int"
+    assert isinstance(t_end, int), "t_end must be of type int"
+    assert b2.units.fundamentalunits.have_same_dimensions(amplitude, b2.amp), \
+        "amplitude must have the dimension of current. e.g. brian2.uamp"
+    assert b2.units.fundamentalunits.have_same_dimensions(tau, b2.ms), \
+        "decay rate must have the dimension of time. e.g. brian2.ms"
+
+    tmp_size = 1 + t_end  # +1 for t=0
+    if append_zero:
+        tmp_size += 1
+    tmp = np.zeros((tmp_size, 1)) * b2.amp
+    if t_end > t_start:  # if deltaT is zero, we return a zero current
+        t = range(0, (t_end - t_start) + 1) * unit_time
+        exp_decay = np.exp(-t/tau)
+        c = amplitude*(1-exp_decay)*exp_decay
+        tmp[t_start: t_end + 1, 0] = c
+    curr = b2.TimedArray(tmp, dt=1. * unit_time)
+    return curr
+
+
 ######################################### PLOTTING ######################################################
-def plot_I_v_w(voltage_monitor, current, title=None, firing_threshold=None, legend_location=0, savefig = False):
+def plot_I_v_w(voltage_monitor, current, title=None, firing_threshold=None, legend_location=0, savefig=False):
     """plots voltage and current .
 
     Args:
@@ -192,9 +246,7 @@ def plot_I_v_w(voltage_monitor, current, title=None, firing_threshold=None, lege
         title (string, optional): title of the figure
         firing_threshold (Quantity, optional): if set to a value, the firing threshold is plotted.
         legend_location (int): legend location. default = 0 (="best")
-
-    Returns:
-        the figure
+        savefig (Bool): If True, the figure is saved in the directory /plots, default = False
     """
 
     assert isinstance(voltage_monitor, b2.StateMonitor), "voltage_monitor is not of type StateMonitor"
@@ -239,7 +291,14 @@ def plot_I_v_w(voltage_monitor, current, title=None, firing_threshold=None, lege
 
 
 def plot_voltage_derivative_curve(voltage, derivative, title=None, save_figure=False):
-    
+    """plots the voltage wrt its derivative
+
+        Args:
+            voltage (array): voltage
+            derivative (array): derivative of the voltage
+            title (string, optional): title of the figure
+            save_figure (Bool, optional): If True, the figure is saved in the directory /plots, default = False
+    """
     plt.plot(voltage * 1000, derivative * 1000)
     plt.xlabel("Voltage [mV]", fontsize=12)
     plt.ylabel("Finite difference derivative [mV/ms]", fontsize=12)
@@ -251,6 +310,16 @@ def plot_voltage_derivative_curve(voltage, derivative, title=None, save_figure=F
 
 
 def plot_sigmoid(x, E, D, save_figure=False):
+    """plots a sigmoid using the following equation
+    .. math::
+        f(x) = \frac{1}{1+e^-\frac{x-E}{D})}
+
+        Args:
+            x (array): values for which the sigmoid is plotted
+            E, D (float): parameters that determine the shape of the sigmoid
+            save_figure (Bool): If True, the figure is saved in the directory /plots, default = False
+
+    """
     E = float(E)
     D = float(D)
     y = 1/(1+np.exp(-(x-E)/D))
@@ -262,66 +331,87 @@ def plot_sigmoid(x, E, D, save_figure=False):
     plt.show()
 
 
+def plot_EPSC_current(current, unit_amp, unit_time, title=None):
+    """plots a current wrt time, with the x-axis in ms and the y-axis in nA
+        Args:
+            current (TimedArray): the current to plot
+            unit_amp (Quantity, Voltage): unit of the voltage of the  current, e.g. brian2.nA
+            unit_time (Quantity, Time): unit of time used to generate the current e.g. 0.1*brian2.ms
+            title (string, optional): title of the figure
 
-def plot_pyramidal(voltage_monitor, current, title=None, firing_threshold=None, legend_location=0, savefig = False):
+    """
+    y = current.values[:, 0] / unit_amp
+    x = range(0, len(current.values[:, 0]))*unit_time
+    plt.plot(x*1000, y)
+    plt.title(title)
+    plt.xlabel("time [ms]")
+    plt.ylabel("current [nA]")
+    plt.grid()
+    plt.show()
+
+
+def plot_pyramidal(voltage_monitor, current_s, current_d, title=None, firing_threshold=None, legend_location=0, savefig=False):
     """plots voltage and current .
 
     Args:
         voltage_monitor (StateMonitor): recorded voltage
-        current (TimedArray): injected current
+        current_s (TimedArray): current injected into the soma
+        current_d (TimedArray): current injected into the dendrite
         title (string, optional): title of the figure
         firing_threshold (Quantity, optional): if set to a value, the firing threshold is plotted.
         legend_location (int): legend location. default = 0 (="best")
+        savefig (bool): If True, the figure is saved in the directory /plots, default = False
 
-    Returns:
-        the figure
     """
 
     assert isinstance(voltage_monitor, b2.StateMonitor), "voltage_monitor is not of type StateMonitor"
-    assert isinstance(current, b2.TimedArray), "current is not of type TimedArray"
+    assert isinstance(current_s, b2.TimedArray), "somatic current is not of type TimedArray"
+    assert isinstance(current_d, b2.TimedArray), "dendritic current is not of type TimedArray"
 
     time_values_ms = voltage_monitor.t / b2.ms
 
-    fig, ax = plt.subplots(6, 1, figsize=(10, 18))
+    fig, ax = plt.subplots(2, 2, figsize=(15, 8))
 
-    # Plot the input current I
-    c = current(voltage_monitor.t, 0)
-    ax[0].plot(voltage_monitor.t / b2.ms, c /b2.nA, "r", lw=2)
-    ax[0].set_ylabel("Input current [nA]", fontsize=12)
-    ax[0].grid()
+    # Plot the input currents of the soma
+    c = current_s(voltage_monitor.t, 0)
+    ax[0, 0].plot(voltage_monitor.t / b2.ms, c /b2.nA, lw=2, label="soma")
+    # Plot input current of dendrite
+    c_d = current_d(voltage_monitor.t, 0)
+    ax[0, 0].plot(voltage_monitor.t/b2.ms, c_d/b2.nA, label="dendrite")
+    ax[0, 0].set_ylabel("Input current [nA]", fontsize=12)
+    ax[0, 0].set_xlabel("t [ms]", fontsize=12)
+    ax[0, 0].legend()
+    ax[0, 0].grid()
+
+    # Plot the kernel K
+    ax[0, 1].plot(time_values_ms, voltage_monitor[0].K, c="r", lw=2)
+    ax[0, 1].set_xlabel("t [ms]", fontsize=12)
+    ax[0, 1].set_ylabel("Kernel (unitless)", fontsize=12)
+    ax[0, 1].grid()
 
     # Plot the Soma voltage v_s
-    ax[1].plot(time_values_ms, voltage_monitor[0].v_s / b2.mV, lw=2)
+    ax[1, 0].plot(time_values_ms, voltage_monitor[0].v_s / b2.mV, lw=2, label="soma")
     if firing_threshold is not None:
-        ax[1].plot(
+        ax[1, 0].plot(
             (voltage_monitor.t / b2.ms)[[0, -1]],
             [firing_threshold / b2.mV, firing_threshold / b2.mV],
             "r--", lw=2)
-        ax[1].legend(["vm", "firing threshold"], fontsize=12, loc=legend_location)
-        
-    ax[1].set_ylabel("Soma Membrane Voltage [mV]", fontsize=12)
-    ax[1].grid()
+        ax[1, 0].legend(["vm", "firing threshold"], fontsize=12, loc=legend_location)
+    # Plot the dendrite voltage v_d
+    ax[1, 0].plot(time_values_ms, voltage_monitor[0].v_d / b2.mV, lw=2, label="dendrite")
+    ax[1, 0].set_ylabel("Membrane Voltage [mV]", fontsize=12)
+    ax[1, 0].set_xlabel("t [ms]", fontsize=12)
+    ax[1, 0].legend()
+    ax[1, 0].grid()
 
     # Plot the Soma adaptive term w_s
-    ax[2].plot(time_values_ms, voltage_monitor[0].w_s /b2.nA, lw=2)
-    ax[2].set_ylabel("Soma Adaption Variable [nA]", fontsize=12)
-    ax[2].grid()
-
-    # Plot the dendrite voltage v_d
-    ax[3].plot(time_values_ms, voltage_monitor[0].v_d /b2.mV, lw=2)
-    ax[3].set_ylabel("Dendrite Membrane Voltage [mV]", fontsize=12)
-    ax[3].grid()
-
+    ax[1, 1].plot(time_values_ms, voltage_monitor[0].w_s /b2.nA, lw=2, label="soma")
     # Plot the dendrite adaptive term w_d
-    ax[4].plot(time_values_ms, voltage_monitor[0].w_d /b2.nA, lw=2)
-    ax[4].set_ylabel("Dendrite Adaption Variable [nA]", fontsize=12)
-    ax[4].grid()
-
-    # Plot the kernel K
-    ax[5].plot(time_values_ms, voltage_monitor[0].K, lw=2)
-    ax[5].set_xlabel("t [ms]", fontsize=12)
-    ax[5].set_ylabel("Kernel (unitless)", fontsize=12)
-    ax[5].grid()
+    ax[1, 1].plot(time_values_ms, voltage_monitor[0].w_d /b2.nA, lw=2, label="dendrite")
+    ax[1, 1].set_ylabel("Adaption Variable [nA]", fontsize=12)
+    ax[1, 1].set_xlabel("t [ms]", fontsize=12)
+    ax[1, 1].legend()
+    ax[1, 1].grid()
 
     if title is not None:
         fig.suptitle(title, fontsize=14)
@@ -331,3 +421,4 @@ def plot_pyramidal(voltage_monitor, current, title=None, firing_threshold=None, 
     if savefig:
         plt.savefig("plots/" + title + ".png")
     plt.show()
+
