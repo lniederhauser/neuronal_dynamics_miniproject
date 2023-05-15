@@ -167,6 +167,7 @@ def simulate_pyramidal_neuron(tau_s, tau_d, C_s, C_d, v_rest, b, v_spike, tau_w_
     kernel_delay = 0.5 * b2.ms
     kernel_up_time = 2 * b2.ms
 
+    '''
     eqs = """
         dv_s/dt = -(v_s - v_rest)/tau_s + (I_s(t,i) + w_s + g_s * f)/C_s : volt (unless refractory)
         dw_s/dt = -w_s/tau_w_s : amp
@@ -177,20 +178,37 @@ def simulate_pyramidal_neuron(tau_s, tau_d, C_s, C_d, v_rest, b, v_spike, tau_w_
         dK/dt = zero_hz : 1
         f = 1 /(1 + exp(-(v_d-E_d)/D_d)) : 1
         """
-
+    
     neuron = b2.NeuronGroup(1, model=eqs, threshold="v_s>v_spike", reset="v_s=v_rest;w_s+=b;v_d=v_d;w_d=w_d;t_p_1=t+kernel_delay",
                             refractory=T_refractory, method="euler", events={'K_step_up': '(t > t_p_1) and (t_p_1 != zero_ms)',
                                                                             'K_step_down': '(t > t_p_2) and (t_p_2 != zero_ms)'})
     neuron.run_on_event('K_step_up', 'K = 1; t_p_2 = t_p_1 + kernel_up_time; t_p_1 = zero_ms')
     neuron.run_on_event('K_step_down', 'K = 0; t_p_2 = zero_ms')
+    '''
+    eqs = """
+            dv_s/dt = -(v_s - v_rest)/tau_s + (I_s(t,i) + w_s + g_s * f)/C_s : volt (unless refractory)
+            dw_s/dt = -w_s/tau_w_s : amp
+            dv_d/dt = -(v_d-v_rest)/tau_d + (I_d(t,i) + w_d + g_d * f + c_d * K)/C_d : volt
+            dw_d/dt = (-w_d + a * (v_d - v_rest))/tau_w_d : amp
+            dt_p/dt = 0 : second
+            dK/dt = zero_hz : 1
+            f = 1 /(1 + exp(-(v_d-E_d)/D_d)) : 1
+            """
+    neuron = b2.NeuronGroup(1, model=eqs, threshold="v_s>v_spike", reset="v_s=v_rest;w_s+=b;t_p=t",
+                            refractory=T_refractory, method="euler",
+                            events={'K_step_up': '(t >= t_p+kernel_delay) and (t < t_p+kernel_delay+kernel_up_time)',
+                                    'K_step_down': 't >= t_p+kernel_delay+kernel_up_time'})
+    neuron.run_on_event('K_step_up', 'K = 1')
+    neuron.run_on_event('K_step_down', 'K = 0')
     
     # initial values of v and w is set here:
     neuron.v_s = v_rest
     neuron.w_s = 0.0 * b2.pA
     neuron.v_d = v_rest
     neuron.w_d = 0.0 * b2.pA
-    neuron.t_p_1 = 0 * b2.ms
-    neuron.t_p_2 = 0 * b2.ms
+    # neuron.t_p_1 = 0 * b2.ms
+    # neuron.t_p_2 = 0 * b2.ms
+    neuron.t_p = float("inf") * b2.ms  # initiate to a high value so that t !> (t_p + kernel delay)
     neuron.K = 0
 
     state_monitor = b2.StateMonitor(neuron, ["v_s", "v_d", "w_s", "w_d", "K"], record=True)
