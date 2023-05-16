@@ -167,24 +167,6 @@ def simulate_pyramidal_neuron(tau_s, tau_d, C_s, C_d, v_rest, b, v_spike, tau_w_
     kernel_delay = 0.5 * b2.ms
     kernel_up_time = 2 * b2.ms
 
-    '''
-    eqs = """
-        dv_s/dt = -(v_s - v_rest)/tau_s + (I_s(t,i) + w_s + g_s * f)/C_s : volt (unless refractory)
-        dw_s/dt = -w_s/tau_w_s : amp
-        dv_d/dt = -(v_d-v_rest)/tau_d + (I_d(t,i) + w_d + g_d * f + c_d * K)/C_d : volt
-        dw_d/dt = (-w_d + a * (v_d - v_rest))/tau_w_d : amp
-        dt_p_1/dt = 0 : second
-        dt_p_2/dt = 0 : second
-        dK/dt = zero_hz : 1
-        f = 1 /(1 + exp(-(v_d-E_d)/D_d)) : 1
-        """
-    
-    neuron = b2.NeuronGroup(1, model=eqs, threshold="v_s>v_spike", reset="v_s=v_rest;w_s+=b;v_d=v_d;w_d=w_d;t_p_1=t+kernel_delay",
-                            refractory=T_refractory, method="euler", events={'K_step_up': '(t > t_p_1) and (t_p_1 != zero_ms)',
-                                                                            'K_step_down': '(t > t_p_2) and (t_p_2 != zero_ms)'})
-    neuron.run_on_event('K_step_up', 'K = 1; t_p_2 = t_p_1 + kernel_up_time; t_p_1 = zero_ms')
-    neuron.run_on_event('K_step_down', 'K = 0; t_p_2 = zero_ms')
-    '''
     eqs = """
             dv_s/dt = -(v_s - v_rest)/tau_s + (I_s(t,i) + w_s + g_s * f)/C_s : volt (unless refractory)
             dw_s/dt = -w_s/tau_w_s : amp
@@ -218,6 +200,64 @@ def simulate_pyramidal_neuron(tau_s, tau_d, C_s, C_d, v_rest, b, v_spike, tau_w_
     return state_monitor#, spike_monitor
 
 
+######################################### TWO COMPARTMENTS WITH NOISE ######################################################
+def simulate_pyramidal_neuron_noisy(tau_s, tau_d, tau_ou, mu_s, mu_d, sigma_ou, C_s, C_d, v_rest, b, v_spike, tau_w_s, tau_w_d, I_s_ext, I_d_ext,
+                                    a, E_d, D_d, g_d, g_s, c_d, T_refractory, simulation_time=200 * b2.ms, nb_neurons = 1):
+    r"""
+    Simulation of the two-model compartment using model equations and refractory period
+
+    Returns:
+        (state_monitor, spike_monitor):
+        A b2.StateMonitor for the variables "v" and "w" and a b2.SpikeMonitor
+    """
+
+    # EXP-IF
+    # "unless refractory" arg allows voltage to stay unchanged during the refractory period
+
+    zero_hz = 0 * b2.hertz
+    zero_ms = 0 * b2.ms
+    kernel_delay = 0.5 * b2.ms
+    kernel_up_time = 2 * b2.ms
+
+    eqs = """
+            dv_s/dt = -(v_s - v_rest)/tau_s + (I_s + w_s + g_s * f)/C_s : volt (unless refractory)
+            dw_s/dt = -w_s/tau_w_s : amp
+            dv_d/dt = -(v_d-v_rest)/tau_d + (I_d + w_d + g_d * f + c_d * K)/C_d : volt
+            dw_d/dt = (-w_d + a * (v_d - v_rest))/tau_w_d : amp
+            dt_p/dt = 0 : second
+            dK/dt = zero_hz : 1
+            f = 1 /(1 + exp(-(v_d-E_d)/D_d)) : 1
+            dI_s_bg/dt = (mu_s - I_s_bg)/tau_ou + sqrt(2/tau_ou)*sigma_ou*xi_1 : amp
+            dI_d_bg/dt = (mu_d - I_d_bg)/tau_ou + sqrt(2/tau_ou)*sigma_ou*xi_2 : amp
+            I_s = I_s_ext(t,i) + I_s_bg : amp
+            I_d = I_d_ext(t,i) + I_d_bg : amp
+            """
+    neuron = b2.NeuronGroup(nb_neurons, model=eqs, threshold="v_s>v_spike", reset="v_s=v_rest;w_s+=b;t_p=t",
+                            refractory=T_refractory, method="euler",
+                            events={'K_step_up': '(t >= t_p+kernel_delay) and (t < t_p+kernel_delay+kernel_up_time)',
+                                    'K_step_down': 't >= t_p+kernel_delay+kernel_up_time'})
+    neuron.run_on_event('K_step_up', 'K = 1')
+    neuron.run_on_event('K_step_down', 'K = 0')
+    
+    # initial values of v and w is set here:
+    neuron.v_s = v_rest
+    neuron.w_s = 0.0 * b2.pA
+    neuron.v_d = v_rest
+    neuron.w_d = 0.0 * b2.pA
+    # neuron.t_p_1 = 0 * b2.ms
+    # neuron.t_p_2 = 0 * b2.ms
+    neuron.t_p = float("inf") * b2.ms  # initiate to a high value so that t !> (t_p + kernel delay)
+    neuron.K = 0
+
+    state_monitor = b2.StateMonitor(neuron, ["v_s", "v_d", "w_s", "w_d", "K", "I_s_bg", "I_d_bg", "I_s", "I_d"], record=True)
+    #spike_monitor = b2.SpikeMonitor(neuron)
+
+    b2.run(simulation_time)
+    return state_monitor#, spike_monitor
+
+
+
+######################################### MAKE EPSC CURRENT ######################################################
 def get_EPSC_current(t_start, t_end, unit_time, amplitude, tau, append_zero=True):
     """Creates an Excitatory Post-Synaptic Current (EPSC) shaped current
 
@@ -430,6 +470,64 @@ def plot_pyramidal(voltage_monitor, current_s, current_d, title=None, firing_thr
     ax[1, 1].set_xlabel("t [ms]", fontsize=12)
     ax[1, 1].legend()
     ax[1, 1].grid()
+
+    if title is not None:
+        fig.suptitle(title, fontsize=14)
+
+    fig.tight_layout()
+
+    if savefig:
+        plt.savefig("plots/" + title + ".png")
+    plt.show()
+
+
+def plot_noise_and_noisy_currents(voltage_monitor, title=None, savefig=False):
+    """plots voltage and current .
+
+    Args:
+        voltage_monitor (StateMonitor): recorded voltage
+        current_s (TimedArray): current injected into the soma
+        current_d (TimedArray): current injected into the dendrite
+        title (string, optional): title of the figure
+        legend_location (int): legend location. default = 0 (="best")
+        savefig (bool): If True, the figure is saved in the directory /plots, default = False
+
+    """
+
+    assert isinstance(voltage_monitor, b2.StateMonitor), "voltage_monitor is not of type StateMonitor"
+
+    time_values_ms = voltage_monitor.t / b2.ms
+
+    fig, ax = plt.subplots(2, 2, figsize=(15, 8))
+
+    # Plot the current at the soma
+    ax[0, 0].plot(voltage_monitor.t / b2.ms, voltage_monitor[0].I_s /b2.nA, lw=2)
+    ax[0, 0].set_ylabel("Current [nA]", fontsize=12)
+    ax[0, 0].set_xlabel("t [ms]", fontsize=12)
+    ax[0, 0].set_title("Total Current at Soma")
+    ax[0, 0].grid()
+
+    # Plot the current at the dendrite
+    ax[0, 1].plot(voltage_monitor.t / b2.ms, voltage_monitor[0].I_d /b2.nA, lw=2)
+    ax[0, 1].set_ylabel("Current [nA]", fontsize=12)
+    ax[0, 1].set_xlabel("t [ms]", fontsize=12)
+    ax[0, 1].set_title("Total Current at Dendrite")
+    ax[0, 1].grid()
+
+    # Plot the current noise at the soma
+    ax[1, 0].plot(voltage_monitor.t / b2.ms, voltage_monitor[0].I_s_bg /b2.nA, lw=2)
+    ax[1, 0].set_ylabel("Noise [nA]", fontsize=12)
+    ax[1, 0].set_xlabel("t [ms]", fontsize=12)
+    ax[1, 0].set_title("Noise at Soma")
+    ax[1, 0].grid()
+
+    # Plot the current noise at the dendrite
+    ax[1, 1].plot(voltage_monitor.t / b2.ms, voltage_monitor[0].I_s_bg /b2.nA, lw=2)
+    ax[1, 1].set_ylabel("Noise [nA]", fontsize=12)
+    ax[1, 1].set_xlabel("t [ms]", fontsize=12)
+    ax[1, 1].set_title("Noise at Dendrite")
+    ax[1, 1].grid()
+
 
     if title is not None:
         fig.suptitle(title, fontsize=14)
