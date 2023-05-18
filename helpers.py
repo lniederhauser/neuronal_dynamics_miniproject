@@ -200,9 +200,10 @@ def simulate_pyramidal_neuron(tau_s, tau_d, C_s, C_d, v_rest, b, v_spike, tau_w_
     return state_monitor#, spike_monitor
 
 
-######################################### TWO COMPARTMENTS WITH NOISE ######################################################
-def simulate_pyramidal_neuron_noisy(tau_s, tau_d, tau_ou, mu_s, mu_d, sigma_ou, C_s, C_d, v_rest, b, v_spike, tau_w_s, tau_w_d, I_s_ext, I_d_ext,
-                                    a, E_d, D_d, g_d, g_s, c_d, T_refractory, simulation_time=200 * b2.ms, nb_neurons = 1):
+######################################### TWO COMPARTMENTS WITH NOISE ##################################################
+def simulate_pyramidal_neuron_noisy(tau_s, tau_d, tau_ou, mu_s, mu_d, sigma_ou, C_s, C_d, v_rest, b, v_spike, tau_w_s,
+                                    tau_w_d, I_s_ext, I_d_ext, a, E_d, D_d, g_d, g_s, c_d, T_refractory,
+                                    simulation_time=200*b2.ms, nb_neurons=1):
     r"""
     Simulation of the two-model compartment using model equations and refractory period
 
@@ -229,11 +230,11 @@ def simulate_pyramidal_neuron_noisy(tau_s, tau_d, tau_ou, mu_s, mu_d, sigma_ou, 
             f = 1 /(1 + exp(-(v_d-E_d)/D_d)) : 1
             dI_s_bg/dt = (mu_s - I_s_bg)/tau_ou + sqrt(2/tau_ou)*sigma_ou*xi_1 : amp
             dI_d_bg/dt = (mu_d - I_d_bg)/tau_ou + sqrt(2/tau_ou)*sigma_ou*xi_2 : amp
-            I_s = I_s_ext(t,i) + I_s_bg : amp
-            I_d = I_d_ext(t,i) + I_d_bg : amp
+            I_s = I_s_ext(t) + I_s_bg : amp
+            I_d = I_d_ext(t) + I_d_bg : amp
             """
-    neuron = b2.NeuronGroup(nb_neurons, model=eqs, threshold="v_s>v_spike", reset="v_s=v_rest;w_s+=b;t_p=t",
-                            refractory=T_refractory, method="euler",
+    neuron = b2.NeuronGroup(N=nb_neurons, model=eqs, threshold="v_s>v_spike", reset="v_s=v_rest;w_s+=b;t_p=t",
+                            refractory=T_refractory,
                             events={'K_step_up': '(t >= t_p+kernel_delay) and (t < t_p+kernel_delay+kernel_up_time)',
                                     'K_step_down': 't >= t_p+kernel_delay+kernel_up_time'})
     neuron.run_on_event('K_step_up', 'K = 1')
@@ -256,8 +257,7 @@ def simulate_pyramidal_neuron_noisy(tau_s, tau_d, tau_ou, mu_s, mu_d, sigma_ou, 
     return state_monitor#, spike_monitor
 
 
-
-######################################### MAKE EPSC CURRENT ######################################################
+############################################## INPUT CURRENTS  #########################################################
 def get_EPSC_current(t_start, t_end, unit_time, amplitude, tau, append_zero=True):
     """Creates an Excitatory Post-Synaptic Current (EPSC) shaped current
 
@@ -291,6 +291,39 @@ def get_EPSC_current(t_start, t_end, unit_time, amplitude, tau, append_zero=True
         c = amplitude*(1-exp_decay)*exp_decay
         tmp[t_start: t_end + 1, 0] = c
     curr = b2.TimedArray(tmp, dt=1. * unit_time)
+    return curr
+
+
+def get_alternating_current(t_start, t_end, unit_time, high_current, low_current, t_down, t_up, unit_current=b2.pA,
+                            phase_lag=0, append_zero=False):
+    assert isinstance(t_start, int), "t_start must be of type int"
+    assert isinstance(t_end, int), "t_end must be of type int"
+    assert isinstance(t_down, int), "t_down must be of type int"
+    assert isinstance(t_up, int), "t_up must be of type int"
+    assert b2.units.fundamentalunits.have_same_dimensions(high_current, b2.amp), \
+        "high_current must have the dimension of current. e.g. brian2.uamp"
+    assert b2.units.fundamentalunits.have_same_dimensions(low_current, b2.amp), \
+        "low_current must have the dimension of current. e.g. brian2.uamp"
+
+    tmp_size = 1 + t_end  # +1 for t=0
+    if append_zero:
+        tmp_size += 1
+    tmp = np.zeros(tmp_size) * unit_current
+    tmp[t_start:t_start + phase_lag] = low_current
+    if t_end > t_start:  # if deltaT is zero, we return a zero current
+        time_array = range(0, (t_end - t_start - phase_lag) + 1)
+        period = t_down + t_up
+        period_counter = 0
+        c = np.zeros(len(time_array))
+        for i, t in enumerate(time_array):
+            if t-(period_counter*period) <= t_up:
+                c[i] = high_current / unit_current
+            elif t-period_counter*period > t_up:
+                c[i] = low_current / unit_current
+            if t >= period*(period_counter+1):
+                period_counter += 1
+        tmp[t_start+phase_lag: t_end + 1] = c * unit_current
+    curr = b2.TimedArray(tmp, dt=1.*unit_time)
     return curr
 
 
@@ -392,7 +425,7 @@ def plot_sigmoid(x, E, D, save_figure=False):
 def plot_EPSC_current(current, unit_amp, unit_time, title=None):
     """plots a current wrt time, with the x-axis in ms and the y-axis in nA
         Args:
-            current (TimedArray): the current to plot
+            current (2d TimedArray): the current to plot
             unit_amp (Quantity, Voltage): unit of the voltage of the  current, e.g. brian2.nA
             unit_time (Quantity, Time): unit of time used to generate the current e.g. 0.1*brian2.ms
             title (string, optional): title of the figure
@@ -528,7 +561,6 @@ def plot_noise_and_noisy_currents(voltage_monitor, title=None, savefig=False):
     ax[1, 1].set_title("Noise at Dendrite")
     ax[1, 1].grid()
 
-
     if title is not None:
         fig.suptitle(title, fontsize=14)
 
@@ -538,3 +570,13 @@ def plot_noise_and_noisy_currents(voltage_monitor, title=None, savefig=False):
         plt.savefig("plots/" + title + ".png")
     plt.show()
 
+
+def plot_alternating_currents(current1, current2, label1, label2, unit_time=b2.ms, unit_amp=b2.pA, title=None):
+    plt.plot(range(0, len(current1.values)) * unit_time * 1000, current1.values / unit_amp, label=label1)
+    plt.plot(range(0, len(current2.values)) * unit_time * 1000, current2.values / unit_amp, label=label2)
+    plt.title(title)
+    plt.xlabel("time [ms]")
+    plt.ylabel("current [pA]")
+    plt.legend()
+    plt.grid()
+    plt.show()
