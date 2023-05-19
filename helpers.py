@@ -251,10 +251,10 @@ def simulate_pyramidal_neuron_noisy(tau_s, tau_d, tau_ou, mu_s, mu_d, sigma_ou, 
     neuron.K = 0
 
     state_monitor = b2.StateMonitor(neuron, ["v_s", "v_d", "w_s", "w_d", "K", "I_s_bg", "I_d_bg", "I_s", "I_d"], record=True)
-    #spike_monitor = b2.SpikeMonitor(neuron)
+    spike_monitor = b2.SpikeMonitor(neuron)
 
     b2.run(simulation_time)
-    return state_monitor#, spike_monitor
+    return state_monitor, spike_monitor
 
 
 ############################################## INPUT CURRENTS  #########################################################
@@ -580,3 +580,18 @@ def plot_alternating_currents(current1, current2, label1, label2, unit_time=b2.m
     plt.legend()
     plt.grid()
     plt.show()
+
+
+def compute_firing_rate(spike_monitor, sim_time=800, time_step=1*b2.ms):
+
+    t = np.array(spike_monitor.t/b2.ms)
+    n = np.array(spike_monitor.i/b2.ms)
+    time = np.arange(sim_time)
+    t_dig = np.digitize(t,time)
+    values = np.unique(t_dig)
+    firing_rate = np.zeros(sim_time)
+    for v in values:
+        firing_rate[v-1] += (t_dig == v).sum()
+    firing_rate = firing_rate/(sim_time*time_step)
+    
+    return firing_rate
