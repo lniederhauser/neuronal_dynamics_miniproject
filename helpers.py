@@ -585,7 +585,7 @@ def plot_alternating_currents(current1, current2, label1, label2, unit_time=b2.m
 def compute_firing_rate(spike_monitor, sim_time=800, time_step=1*b2.ms):
 
     t = np.array(spike_monitor.t/b2.ms)
-    n = np.array(spike_monitor.i/b2.ms)
+    n = np.array(spike_monitor.i)
     time = np.arange(sim_time)
     t_dig = np.digitize(t,time)
     values = np.unique(t_dig)
@@ -595,3 +595,12 @@ def compute_firing_rate(spike_monitor, sim_time=800, time_step=1*b2.ms):
     firing_rate = firing_rate/(sim_time*time_step)
     
     return firing_rate
+
+def compute_burst_rate(spike_monitor, sim_time=800, time_step=1*b2.ms):
+    
+    t = np.array(spike_monitor.t/b2.ms)
+    n = np.array(spike_monitor.i)
+
+
+
+    return burst_rate
