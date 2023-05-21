@@ -311,11 +311,7 @@ def compute_event_rate(spike_monitor, burst_rate, nb_neurons=4000, sim_time=800)
 
     # Creating a null 2D array (neurons, spike time) with 1 only where an isolated single spike occurs (i.e. the spike
     # is not part of a burst
-    single_spike_scatter = spike_scatter - burst_scatter
-    print(np.sum(single_spike_scatter<0)) # Some are <0 -> means that sometimes there's a 1 in burst scatter and not in spike scatter
-    print(np.where(burst_scatter>spike_scatter))
-    print("spike: " + str(spike_scatter[0, 44]))
-    print("burst: " + str(burst_scatter[0, 44]))
+    single_spike_scatter = np.logical_and(spike_scatter, np.logical_not(burst_scatter))
 
     # Mean and time normalisation to get rate
     single_spike_rate = np.mean(single_spike_scatter, axis=0) / b2.ms
