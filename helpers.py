@@ -257,6 +257,83 @@ def simulate_pyramidal_neuron_noisy(tau_s, tau_d, tau_ou, mu_s, mu_d, sigma_ou, 
     return state_monitor, spike_monitor
 
 
+'''
+def compute_firing_rate(spike_monitor, sim_time=800, time_step=1 * b2.ms):
+    spike_times = np.array(spike_monitor.t / b2.ms)  # When each spike occurs in order of time
+    spike_neurons = np.array(spike_monitor.i)  # Which neuron fires at the spike time
+    time = np.arange(sim_time)
+    t_dig = np.digitize(t, time)
+    values = np.unique(t_dig)
+    firing_rate = np.zeros(sim_time)
+    for v in values:
+        firing_rate[v - 1] += (t_dig == v).sum()
+    firing_rate = firing_rate / (sim_time * time_step)
+
+    return firing_rate
+'''
+
+
+def compute_spike_and_burst_scatter(spike_monitor, nb_neurons, sim_time):
+
+    spike_times = np.array(spike_monitor.t / b2.ms)  # When each spike occurs in order of time
+    spike_neurons = np.array(spike_monitor.i)  # Which neuron fires at the spike time
+    time_points = np.arange(sim_time)  # 800 time points acting here as 1ms bins
+    spike_times_dig = np.digitize(spike_times, time_points)  # Digitized spike times
+
+    # Creating null 2D array (neurons, spike time) with 1 only where a spike occurred
+    spike_scatter = np.zeros((nb_neurons, sim_time))
+    for s, n in zip(spike_times_dig, spike_neurons):
+        spike_scatter[int(n - 1), int(s - 1)] = 1
+
+    # Creating a null 2D array (neurons, spike time) with 1 only where a burst occurred
+    burst_scatter = np.zeros(spike_scatter.shape)
+    rect_16 = np.ones(16)
+    for n in range(nb_neurons):
+        burst_scatter[n, :] = np.where(np.convolve(spike_scatter[n, :], rect_16, 'same') > 1, 1, 0)
+
+    return spike_scatter, burst_scatter
+
+
+def compute_firing_and_burst_rate(spike_monitor, nb_neurons=4000, sim_time=800):
+
+    spike_scatter, burst_scatter = compute_spike_and_burst_scatter(spike_monitor, nb_neurons, sim_time)
+
+    # Mean and time normalisation to get rates
+    firing_rate = np.mean(spike_scatter, axis=0) / b2.ms
+    burst_rate = np.mean(burst_scatter, axis=0) / b2.ms
+
+    return firing_rate, burst_rate
+
+
+def compute_event_rate(spike_monitor, burst_rate, nb_neurons=4000, sim_time=800):
+
+    spike_scatter, burst_scatter = compute_spike_and_burst_scatter(spike_monitor, nb_neurons, sim_time)
+
+    # Creating a null 2D array (neurons, spike time) with 1 only where an isolated single spike occurs (i.e. the spike
+    # is not part of a burst
+    single_spike_scatter = spike_scatter - burst_scatter
+    print(np.sum(single_spike_scatter<0)) # Some are <0 -> means that sometimes there's a 1 in burst scatter and not in spike scatter
+    print(np.where(burst_scatter>spike_scatter))
+    print("spike: " + str(spike_scatter[0, 44]))
+    print("burst: " + str(burst_scatter[0, 44]))
+
+    # Mean and time normalisation to get rate
+    single_spike_rate = np.mean(single_spike_scatter, axis=0) / b2.ms
+
+    event_rate = single_spike_rate + burst_rate
+
+    return event_rate
+
+
+def compute_burst_proba(burst_rate, event_rate):
+    proba = np.zeros(event_rate.shape)
+    for i, rate in enumerate(event_rate):
+        if rate !=0:
+            proba[i] = burst_rate[i]/rate
+
+    return proba
+
+
 ############################################## INPUT CURRENTS  #########################################################
 def get_EPSC_current(t_start, t_end, unit_time, amplitude, tau, append_zero=True):
     """Creates an Excitatory Post-Synaptic Current (EPSC) shaped current
@@ -582,25 +659,60 @@ def plot_alternating_currents(current1, current2, label1, label2, unit_time=b2.m
     plt.show()
 
 
-def compute_firing_rate(spike_monitor, sim_time=800, time_step=1*b2.ms):
+def plot_external_inputs_and_rates(firing_rate, bursting_rate, soma_current, dendrite_current,
+                                   isBurstProba=False, title=None, savefig=False):
 
-    t = np.array(spike_monitor.t/b2.ms)
-    n = np.array(spike_monitor.i)
-    time = np.arange(sim_time)
-    t_dig = np.digitize(t,time)
-    values = np.unique(t_dig)
-    firing_rate = np.zeros(sim_time)
-    for v in values:
-        firing_rate[v-1] += (t_dig == v).sum()
-    firing_rate = firing_rate/(sim_time*time_step)
-    
-    return firing_rate
+    # Smoothing with convolution and 10ms window
+    rect_10 = np.ones(10)
+    firing_rate = np.convolve(firing_rate, rect_10, 'same') / 10
+    bursting_rate = np.convolve(bursting_rate, rect_10, 'same') / 10
 
-def compute_burst_rate(spike_monitor, sim_time=800, time_step=1*b2.ms):
-    
-    t = np.array(spike_monitor.t/b2.ms)
-    n = np.array(spike_monitor.i)
+    fig, ax = plt.subplots(2, 1, figsize=(12, 8))
 
+    if isBurstProba:
+        label0a = "event rate"
+        label1a = "burst" + '\n' + "probability"
+        ylabel0a = "Event rate [Hz]"
+        title0 = "Population smooth event activity"
+        ylabel1a = "Bursting probability"
+        title1 = "Population smooth bursting probability"
+    else:
+        label0a = "firing rate"
+        label1a = "bursting" + '\n' + "rate"
+        ylabel0a = 'Firing rate [Hz]'
+        title0 = "Population smooth Firing Activity"
+        ylabel1a = 'Bursting rate [Hz]'
+        title1 = 'Population Smooth Bursting Activity'
 
+    ax0b = ax[0].twinx()
+    ax[0].plot(firing_rate, label=label0a)
+    ax[0].set_xlabel('Time [ms]')
+    ax[0].set_ylabel(ylabel0a)
+    ax0b.plot(range(0, len(soma_current.values)) * b2.ms * 1000, soma_current.values / b2.pA,
+              label="soma" + '\n' + "input current", c='orange')
+    ax0b.set_ylabel('Input current [pA]')
+    ax[0].set_title(title0 + ' and external somatic stimulation')
+    ax[0].grid()
+    ax[0].legend(loc='best')
+    ax0b.legend(loc='lower right')
 
-    return burst_rate
+    ax1b = ax[1].twinx()
+    ax1b.plot(range(0, len(dendrite_current.values)) * b2.ms * 1000, dendrite_current.values / b2.pA,
+              label="dendrite" + '\n' + "input current", c='orange')
+    ax1b.set_ylabel('Input current [pA]')
+    ax[1].plot(bursting_rate, label=label1a)
+    ax[1].set_xlabel('Time [ms]')
+    ax[1].set_ylabel(ylabel1a)
+    ax[1].set_title(title1 + ' and external dendritic stimulation')
+    ax[1].grid()
+    ax[1].legend(loc='upper left')
+    ax1b.legend(loc='lower left')
+
+    if title is not None:
+        fig.suptitle(title, fontsize=14)
+
+    fig.tight_layout()
+
+    if savefig:
+        plt.savefig("plots/" + title + ".png")
+    plt.show()
