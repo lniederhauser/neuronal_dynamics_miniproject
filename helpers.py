@@ -50,9 +50,6 @@ def simulate_soma(tau_s, C, v_rest, b, v_spike, tau_w, I_stim, T_refractory, sim
     neuron.w = 0.0 * b2.pA
 
     # Monitoring membrane voltage (v) and w
-    # state_monitor = b2.StateMonitor(neuron, ["v", "w", "I_stim"], record=True)
-    # TODO: Find out if we have to record I_stim and how ??
-    #  all state monitor can record are {'v', 'lastspike', 'not_refractory', 'w'}
     state_monitor = b2.StateMonitor(neuron, True, record=True)
     spike_monitor = b2.SpikeMonitor(neuron)
 
@@ -114,7 +111,7 @@ def simulate_dendritic(tau_d, C, v_rest, a, tau_w, E_d, D_d, g, I_stim, simulati
 
 
 def extract_rising_voltage_trace(state_monitor):
-    """Extract the part of the voltage trace from the beginning until it reaches its maximum
+    r"""Extract the part of the voltage trace from the beginning until it reaches its maximum
 
         Args:
             state_monitor (StateMonitor): recorded voltage
@@ -155,8 +152,8 @@ def simulate_pyramidal_neuron(tau_s, tau_d, C_s, C_d, v_rest, b, v_spike, tau_w_
     Simulation of the two-model compartment using model equations and refractory period
 
     Returns:
-        (state_monitor, spike_monitor):
-        A b2.StateMonitor for the variables "v" and "w" and a b2.SpikeMonitor
+        state_monitor:
+        A b2.StateMonitor for the variables "v" and "w"
     """
 
     # EXP-IF
@@ -194,10 +191,9 @@ def simulate_pyramidal_neuron(tau_s, tau_d, C_s, C_d, v_rest, b, v_spike, tau_w_
     neuron.K = 0
 
     state_monitor = b2.StateMonitor(neuron, ["v_s", "v_d", "w_s", "w_d", "K"], record=True)
-    #spike_monitor = b2.SpikeMonitor(neuron)
 
     b2.run(simulation_time)
-    return state_monitor#, spike_monitor
+    return state_monitor
 
 
 ######################################### TWO COMPARTMENTS WITH NOISE ##################################################
@@ -274,6 +270,20 @@ def compute_firing_rate(spike_monitor, sim_time=800, time_step=1 * b2.ms):
 
 
 def compute_spike_and_burst_scatter(spike_monitor, nb_neurons, sim_time):
+    r"""
+    Computes when each neuron is spiking and bursting during a simulation
+
+    Args:
+        spike_monitor (b2.SpikeMonitor): spike monitor resulting from the stimulation of the neuron population
+        nb_neurons (int): number of neurons in the simulation
+        sim_time (int): duration of the simulation in ms
+
+    Returns:
+        spike_scatter (2D numpy array, size: (nb_neurons, sim_time)): [i,j] contains a 1 if a spike occurs in
+                                                                    neuron i at time j, contains 0 otherwise
+        burst_scatter (2D numpy array, size: (nb_neurons, sim_time)): [i,j] contains a 1 if neuron i  is in bursting
+                                                                    state at time j, contains 0 otherwise
+    """
 
     spike_times = np.array(spike_monitor.t / b2.ms)  # When each spike occurs in order of time
     spike_neurons = np.array(spike_monitor.i)  # Which neuron fires at the spike time
@@ -295,6 +305,20 @@ def compute_spike_and_burst_scatter(spike_monitor, nb_neurons, sim_time):
 
 
 def compute_firing_and_burst_rate(spike_monitor, nb_neurons=4000, sim_time=800):
+    r"""
+        Computes the bursting and firing rates of a neuron population at each time point of the simulation
+
+        Args:
+            spike_monitor (b2.SpikeMonitor): spike monitor resulting from the simulation of the neuron population
+            nb_neurons (int): number of neurons in the simulation, default = 4000
+            sim_time (int): duration of the simulation in ms, default = 800
+
+        Returns:
+            firing_rate (1D numpy array, size: (sim_time)): firing rate of the neuronal population at each
+                                                            ms of the simulation
+            burst_rate (1D numpy array, size: (sim_time)): bursting rate of the neuronal population at each
+                                                            ms of the simulation
+    """
 
     spike_scatter, burst_scatter = compute_spike_and_burst_scatter(spike_monitor, nb_neurons, sim_time)
 
@@ -306,6 +330,21 @@ def compute_firing_and_burst_rate(spike_monitor, nb_neurons=4000, sim_time=800):
 
 
 def compute_event_rate(spike_monitor, burst_rate, nb_neurons=4000, sim_time=800):
+    r"""
+         Computes the event rate of a neuron population at each time point of the simulation. An event is a burst or an
+         isolated single spike
+
+         Args:
+             spike_monitor (b2.SpikeMonitor): spike monitor resulting from the simulation of the neuron population
+             burst_rate (1D numpy array, size: (sim_time)): bursting rate of the neuronal population at each
+                                                            ms of the simulation
+             nb_neurons (int): number of neurons in the simulation, default = 4000
+             sim_time (int): duration of the simulation in ms, default = 800
+
+         Returns:
+             event_rate (1D numpy array, size: (sim_time)): event rate of the neuronal population at each
+                                                             ms of the simulation
+     """
 
     spike_scatter, burst_scatter = compute_spike_and_burst_scatter(spike_monitor, nb_neurons, sim_time)
 
@@ -322,6 +361,18 @@ def compute_event_rate(spike_monitor, burst_rate, nb_neurons=4000, sim_time=800)
 
 
 def compute_burst_proba(burst_rate, event_rate):
+    r"""
+         Computes the burst probability of a neuron population at each time point of the simulation.
+
+         Args:
+             burst_rate (1D numpy array, size: (sim_time)): bursting rate of the neuronal population at each
+                                                            ms of the simulation
+             event_rate (1D numpy array, size: (sim_time)): event rate of the neuronal population at each
+                                                             ms of the simulation
+
+         Returns:
+             proba (1D numpy array, size: (sim_time)): bursting probability of all neurons at each ms of the simulation
+     """
     proba = np.zeros(event_rate.shape)
     for i, rate in enumerate(event_rate):
         if rate !=0:
@@ -369,6 +420,26 @@ def get_EPSC_current(t_start, t_end, unit_time, amplitude, tau, append_zero=True
 
 def get_alternating_current(t_start, t_end, unit_time, high_current, low_current, t_down, t_up, unit_current=b2.pA,
                             phase_lag=0, append_zero=False):
+    r"""Creates a periodic rectangular input current alternating from high_current to low_current
+        for a defined simulation duration
+
+    Args:
+        t_start (int): start of the alternating current
+        t_end (int): end of the alternating current
+        unit_time (Quantity, Time): unit of t_start and t_end. e.g. 0.1*brian2.ms
+        high_current (Quantity, Current): amplitude that the current should have during the first part of the period
+        low_current (Quantity, Current): amplitude that the current should have during the second part of the period
+        t_down (int): time during which the current should have the "low_current" value
+        t_up (int): time during which the current should have the "high_current" value
+        unit_current (Quantity, Current): unit of the given current amplitudes e.g. *brian2.pA
+        phase_lag (int): Time delay, the periodic current will not start until "phase_lag" time has passed, default = 0
+        append_zero (bool, optional): if true, 0Amp is appended at t_end+1. Without that
+            trailing 0, Brian reads out the last value in the array for all indices > t_end.
+
+
+    Returns:
+        curr: Brian2.TimedArray
+    """
 
     assert isinstance(t_start, int), "t_start must be of type int"
     assert isinstance(t_end, int), "t_end must be of type int"
@@ -599,10 +670,7 @@ def plot_noise_and_noisy_currents(voltage_monitor, title=None, savefig=False):
 
     Args:
         voltage_monitor (StateMonitor): recorded voltage
-        current_s (TimedArray): current injected into the soma
-        current_d (TimedArray): current injected into the dendrite
         title (string, optional): title of the figure
-        legend_location (int): legend location. default = 0 (="best")
         savefig (bool): If True, the figure is saved in the directory /plots, default = False
 
     """
@@ -651,7 +719,21 @@ def plot_noise_and_noisy_currents(voltage_monitor, title=None, savefig=False):
     plt.show()
 
 
-def plot_alternating_currents(current1, current2, label1, label2, unit_time=b2.ms, unit_amp=b2.pA, title=None):
+def plot_alternating_currents(current1, current2, label1, label2, unit_time=b2.ms, unit_amp=b2.pA, title=None,
+                                savefig=False):
+
+    """plots two currents on the same graph wrt time, with the x-axis in ms and the y-axis in pA
+        Args:
+            current1 (2d TimedArray): the first current to plot
+            current2 (2d TimedArray): the second current to plot
+            label1 (string): label of the first current
+            label2 (string): label of the second current
+            unit_time (Quantity, Time): unit of time used to generate the current e.g. 0.1*brian2.ms
+            unit_amp (Quantity, Voltage): unit of the voltage of the  current, e.g. brian2.pA
+            title (string, optional): title of the figure
+            savefig (bool): If True, the figure is saved in the directory /plots, default = False
+    """
+
     plt.plot(range(0, len(current1.values)) * unit_time * 1000, current1.values / unit_amp, label=label1)
     plt.plot(range(0, len(current2.values)) * unit_time * 1000, current2.values / unit_amp, label=label2)
     plt.title(title)
@@ -659,6 +741,9 @@ def plot_alternating_currents(current1, current2, label1, label2, unit_time=b2.m
     plt.ylabel("current [pA]")
     plt.legend()
     plt.grid()
+    plt.ylim(-220, 300)
+    if savefig:
+        plt.savefig("plots/" + title + ".png")
     plt.show()
 
 
@@ -670,7 +755,7 @@ def plot_external_inputs_and_rates(firing_rate, bursting_rate, soma_current, den
     firing_rate = np.convolve(firing_rate, rect_10, 'same') / 10
     bursting_rate = np.convolve(bursting_rate, rect_10, 'same') / 10
 
-    fig, ax = plt.subplots(2, 1, figsize=(12, 8))
+    fig, ax = plt.subplots(2, 1, figsize=(15, 8))
 
     if isBurstProba:
         label0a = "event rate"
@@ -689,12 +774,12 @@ def plot_external_inputs_and_rates(firing_rate, bursting_rate, soma_current, den
 
     ax0b = ax[0].twinx()
     ax[0].plot(firing_rate, label=label0a)
-    ax[0].set_xlabel('Time [ms]')
-    ax[0].set_ylabel(ylabel0a)
+    ax[0].set_xlabel('Time [ms]', fontsize=20)
+    ax[0].set_ylabel(ylabel0a, fontsize=20)
     ax0b.plot(range(0, len(soma_current.values)) * b2.ms * 1000, soma_current.values / b2.pA,
               label="soma" + '\n' + "input current", c='orange')
-    ax0b.set_ylabel('Input current [pA]')
-    ax[0].set_title(title0 + ' and external somatic stimulation')
+    ax0b.set_ylabel('Input current [pA]', fontsize=20)
+    ax[0].set_title(title0 + ' and external somatic stimulation', fontsize=20)
     ax[0].grid()
     ax[0].legend(loc='best')
     ax0b.legend(loc='lower right')
@@ -702,17 +787,14 @@ def plot_external_inputs_and_rates(firing_rate, bursting_rate, soma_current, den
     ax1b = ax[1].twinx()
     ax1b.plot(range(0, len(dendrite_current.values)) * b2.ms * 1000, dendrite_current.values / b2.pA,
               label="dendrite" + '\n' + "input current", c='orange')
-    ax1b.set_ylabel('Input current [pA]')
+    ax1b.set_ylabel('Input current [pA]', fontsize=20)
     ax[1].plot(bursting_rate, label=label1a)
-    ax[1].set_xlabel('Time [ms]')
-    ax[1].set_ylabel(ylabel1a)
-    ax[1].set_title(title1 + ' and external dendritic stimulation')
+    ax[1].set_xlabel('Time [ms]', fontsize=20)
+    ax[1].set_ylabel(ylabel1a, fontsize=20)
+    ax[1].set_title(title1 + ' and external dendritic stimulation', fontsize=20)
     ax[1].grid()
     ax[1].legend(loc='upper left')
     ax1b.legend(loc='lower left')
-
-    if title is not None:
-        fig.suptitle(title, fontsize=14)
 
     fig.tight_layout()
 
