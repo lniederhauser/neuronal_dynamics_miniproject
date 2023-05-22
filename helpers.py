@@ -369,6 +369,7 @@ def get_EPSC_current(t_start, t_end, unit_time, amplitude, tau, append_zero=True
 
 def get_alternating_current(t_start, t_end, unit_time, high_current, low_current, t_down, t_up, unit_current=b2.pA,
                             phase_lag=0, append_zero=False):
+
     assert isinstance(t_start, int), "t_start must be of type int"
     assert isinstance(t_end, int), "t_end must be of type int"
     assert isinstance(t_down, int), "t_down must be of type int"
@@ -401,7 +402,7 @@ def get_alternating_current(t_start, t_end, unit_time, high_current, low_current
 
 
 ######################################### PLOTTING ######################################################
-def plot_I_v_w(voltage_monitor, current, title=None, firing_threshold=None, legend_location=0, savefig=False):
+def plot_I_v_w(voltage_monitor, current, title=None, firing_threshold=None, legend_location=0, setylim=False, savefig=False):
     """plots voltage and current .
 
     Args:
@@ -424,6 +425,8 @@ def plot_I_v_w(voltage_monitor, current, title=None, firing_threshold=None, lege
     c = current(voltage_monitor.t, 0)
     ax[0].plot(voltage_monitor.t / b2.ms, c /b2.nA, "r", lw=2)
     ax[0].set_ylabel("Input current [nA]", fontsize=12)
+    if setylim:
+        ax[0].set_ylim((-0.05, 1.55))
     ax[0].grid()
 
     # Plot the voltage v
@@ -436,12 +439,16 @@ def plot_I_v_w(voltage_monitor, current, title=None, firing_threshold=None, lege
         ax[1].legend(["vm", "firing threshold"], fontsize=12, loc=legend_location)
         
     ax[1].set_ylabel("Membrane Voltage [mV]", fontsize=12)
+    if setylim:
+        ax[1].set_ylim((-95, 35))
     ax[1].grid()
 
     # Plot the adaptive term w
     ax[2].plot(time_values_ms, voltage_monitor[0].w /b2.nA, lw=2)
     ax[2].set_xlabel("t [ms]", fontsize=12)
     ax[2].set_ylabel("Adaption Variable [nA]", fontsize=12)
+    if setylim:
+        ax[2].set_ylim((-1.05, 0.05))
     ax[2].grid()
 
     if title is not None:
