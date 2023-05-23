@@ -300,6 +300,13 @@ def compute_spike_and_burst_scatter(spike_monitor, nb_neurons, sim_time):
     rect_16 = np.ones(16)
     for n in range(nb_neurons):
         burst_scatter[n, :] = np.where(np.convolve(spike_scatter[n, :], rect_16, 'same') > 1, 1, 0)
+    
+    # Creating a null 2D array (neurons, spike time) with 1 only where an isolated single spike occurs (i.e. the spike
+    # is not part of a burst)
+    single_spike_scatter = np.logical_and(spike_scatter, np.logical_not(burst_scatter))
+
+    # Correcting the burst scatter plot to have 1 only once at the beginning of a bursting event.
+    for n in range(nb_neurons):
         bursting = 0
         for t in range(sim_time):
             if burst_scatter[n,t] == 0 and bursting == 1:
@@ -309,7 +316,7 @@ def compute_spike_and_burst_scatter(spike_monitor, nb_neurons, sim_time):
             if burst_scatter[n,t] == 1 and bursting == 0:
                 bursting = 1
 
-    return spike_scatter, burst_scatter
+    return spike_scatter, single_spike_scatter, burst_scatter
 
 '''def compute_exact_spike_and_burst_rates(spike_monitor, nb_neurons = 4000, sim_time = 800):
     r"""
@@ -364,40 +371,30 @@ def compute_firing_and_burst_rate(spike_monitor, nb_neurons=4000, sim_time=800):
                                                             ms of the simulation
     """
 
-    spike_scatter, burst_scatter = compute_spike_and_burst_scatter(spike_monitor, nb_neurons, sim_time)
+    spike_scatter, single_spike_scatter, burst_scatter = compute_spike_and_burst_scatter(spike_monitor, nb_neurons, sim_time)
 
     # Mean and time normalisation to get rates
     firing_rate = np.mean(spike_scatter, axis=0) / b2.ms
     burst_rate = np.mean(burst_scatter, axis=0) / b2.ms
+    single_spike_rate = np.mean(single_spike_scatter, axis=0) / b2.ms
 
-    return firing_rate, burst_rate
+    return firing_rate, single_spike_rate, burst_rate
 
 
-def compute_event_rate(spike_monitor, burst_rate, nb_neurons=4000, sim_time=800):
+def compute_event_rate(burst_rate, single_spike_rate):
     r"""
          Computes the event rate of a neuron population at each time point of the simulation. An event is a burst or an
          isolated single spike
 
          Args:
-             spike_monitor (b2.SpikeMonitor): spike monitor resulting from the simulation of the neuron population
              burst_rate (1D numpy array, size: (sim_time)): bursting rate of the neuronal population at each
                                                             ms of the simulation
-             nb_neurons (int): number of neurons in the simulation, default = 4000
-             sim_time (int): duration of the simulation in ms, default = 800
+             single_spike_rate (1D numpy array, size: (sim_time)): rate of isolated spikes (not part of bursts)
 
          Returns:
              event_rate (1D numpy array, size: (sim_time)): event rate of the neuronal population at each
                                                              ms of the simulation
      """
-
-    spike_scatter, burst_scatter = compute_spike_and_burst_scatter(spike_monitor, nb_neurons, sim_time)
-
-    # Creating a null 2D array (neurons, spike time) with 1 only where an isolated single spike occurs (i.e. the spike
-    # is not part of a burst
-    single_spike_scatter = np.logical_and(spike_scatter, np.logical_not(burst_scatter))
-
-    # Mean and time normalisation to get rate
-    single_spike_rate = np.mean(single_spike_scatter, axis=0) / b2.ms
 
     event_rate = single_spike_rate + burst_rate
 
