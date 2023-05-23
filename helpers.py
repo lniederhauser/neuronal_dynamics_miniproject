@@ -300,8 +300,52 @@ def compute_spike_and_burst_scatter(spike_monitor, nb_neurons, sim_time):
     rect_16 = np.ones(16)
     for n in range(nb_neurons):
         burst_scatter[n, :] = np.where(np.convolve(spike_scatter[n, :], rect_16, 'same') > 1, 1, 0)
+        bursting = 0
+        for t in range(sim_time):
+            if burst_scatter[n,t] == 0 and bursting == 1:
+                bursting = 0
+            if bursting == 1:
+                burst_scatter[n,t] = 0
+            if burst_scatter[n,t] == 1 and bursting == 0:
+                bursting = 1
 
     return spike_scatter, burst_scatter
+
+'''def compute_exact_spike_and_burst_rates(spike_monitor, nb_neurons = 4000, sim_time = 800):
+    r"""
+    Computes when each neuron is spiking and bursting during a simulation
+
+    Args:
+        spike_monitor (b2.SpikeMonitor): spike monitor resulting from the stimulation of the neuron population
+        nb_neurons (int): number of neurons in the simulation
+        sim_time (int): duration of the simulation in ms
+
+    Returns:
+        spike_scatter (2D numpy array, size: (nb_neurons, sim_time)): [i,j] contains a 1 if a spike occurs in
+                                                                    neuron i at time j, contains 0 otherwise
+        burst_scatter (2D numpy array, size: (nb_neurons, sim_time)): [i,j] contains a 1 if neuron i  is in bursting
+                                                                    state at time j, contains 0 otherwise
+    """
+
+    spike_times = np.array(spike_monitor.t / b2.ms)  # When each spike occurs in order of time
+    spike_neurons = np.array(spike_monitor.i)  # Which neuron fires at the spike time
+    time_points = np.arange(sim_time)  # 800 time points acting here as 1ms bins
+    spike_times_dig = np.digitize(spike_times, time_points)  # Digitized spike times
+
+    # Creating null 2D array (neurons, spike time) with 1 only where a spike occurred
+    spike_2d = [[] for _ in range(nb_neurons)]  # Initialize an empty list for each neuron
+
+    for s in range(len(spike_times)):
+        n = spike_neurons[s]
+        t = spike_times[s]
+        spike_2d[n].append(t)
+
+    # Convert the lists to NumPy arrays if needed
+    spike_2d = [np.array(neuron_spikes) for neuron_spikes in spike_2d]
+
+    print(spike_2d)
+
+    #return firing_rate, burst_rate'''
 
 
 def compute_firing_and_burst_rate(spike_monitor, nb_neurons=4000, sim_time=800):
