@@ -309,11 +309,11 @@ def compute_spike_and_burst_scatter(spike_monitor, nb_neurons, sim_time):
     for n in range(nb_neurons):
         bursting = 0
         for t in range(sim_time):
-            if burst_scatter[n,t] == 0 and bursting == 1:
+            if burst_scatter[n, t] == 0 and bursting == 1:
                 bursting = 0
             if bursting == 1:
-                burst_scatter[n,t] = 0
-            if burst_scatter[n,t] == 1 and bursting == 0:
+                burst_scatter[n, t] = 0
+            if burst_scatter[n, t] == 1 and bursting == 0:
                 bursting = 1
 
     return spike_scatter, single_spike_scatter, burst_scatter
@@ -416,7 +416,7 @@ def compute_burst_proba(burst_rate, event_rate):
      """
     proba = np.zeros(event_rate.shape)
     for i, rate in enumerate(event_rate):
-        if rate !=0:
+        if rate != 0:
             proba[i] = burst_rate[i]/rate
 
     return proba
