@@ -300,12 +300,13 @@ def compute_spike_and_burst_scatter(spike_monitor, nb_neurons, sim_time):
     interval = 16
     spike_indices = np.argwhere(spike_scatter == 1)
     for ind in spike_indices:
-        spikes_before = np.count_nonzero(spike_scatter[ind[0], max(ind[1]-interval,0) : ind[1]])
-        spikes_after = np.count_nonzero(spike_scatter[ind[0], ind[1] + 1 : min(ind[1] + interval + 1, spike_scatter.shape[1])])
+        spikes_before = np.count_nonzero(spike_scatter[ind[0], max(ind[1]-interval, 0): ind[1]])
+        spikes_after = np.count_nonzero(spike_scatter[ind[0], ind[1] + 1: min(ind[1] + interval + 1, spike_scatter.shape[1])])
 
         if spikes_before == 0 and spikes_after == 0:
             single_spike_scatter[ind[0], ind[1]] = 1
-        else:
+        # else:
+        elif spikes_before == 0:
             burst_scatter[ind[0], ind[1]] = 1
     
     return spike_scatter, single_spike_scatter, burst_scatter 
@@ -565,6 +566,8 @@ def plot_sigmoid(x, E, D, save_figure=False):
     plt.plot(x*1000, y)
     plt.grid()
     plt.xlabel("voltage [mV]")
+    plt.ylabel("f(v) [unitless]")
+    plt.title("Sigmoid curve")
     if save_figure:
         plt.savefig("plots/sigmoid.png")
     plt.show()
@@ -589,7 +592,8 @@ def plot_EPSC_current(current, unit_amp, unit_time, title=None):
     plt.show()
 
 
-def plot_pyramidal(voltage_monitor, current_s, current_d, title=None, firing_threshold=None, legend_location=0, savefig=False):
+def plot_pyramidal(voltage_monitor, current_s, current_d, title=None, firing_threshold=None, legend_location=0,
+                   savefig=False, set_ylim=False):
     """plots voltage and current .
 
     Args:
@@ -621,6 +625,8 @@ def plot_pyramidal(voltage_monitor, current_s, current_d, title=None, firing_thr
     ax[0, 0].set_xlabel("t [ms]", fontsize=12)
     ax[0, 0].legend()
     ax[0, 0].grid()
+    if set_ylim:
+        ax[0, 0].set_ylim((-0.05, 2.05))
 
     # Plot the kernel K
     ax[0, 1].plot(time_values_ms, voltage_monitor[0].K, c="r", lw=2)
@@ -642,6 +648,8 @@ def plot_pyramidal(voltage_monitor, current_s, current_d, title=None, firing_thr
     ax[1, 0].set_xlabel("t [ms]", fontsize=12)
     ax[1, 0].legend()
     ax[1, 0].grid()
+    if set_ylim:
+        ax[1, 0].set_ylim((-85, 15))
 
     # Plot the Soma adaptive term w_s
     ax[1, 1].plot(time_values_ms, voltage_monitor[0].w_s /b2.nA, lw=2, label="soma")
@@ -651,6 +659,8 @@ def plot_pyramidal(voltage_monitor, current_s, current_d, title=None, firing_thr
     ax[1, 1].set_xlabel("t [ms]", fontsize=12)
     ax[1, 1].legend()
     ax[1, 1].grid()
+    if set_ylim:
+        ax[1, 1].set_ylim((-0.55, 0.05))
 
     if title is not None:
         fig.suptitle(title, fontsize=14)
@@ -780,6 +790,8 @@ def plot_external_inputs_and_rates(firing_rate, bursting_rate, soma_current, den
     ax[0].grid()
     ax[0].legend(loc='best')
     ax0b.legend(loc='lower right')
+    if isBurstProba:
+        ax[0].set_ylim((3, 9))
 
     ax1b = ax[1].twinx()
     ax1b.plot(range(0, len(dendrite_current.values)) * b2.ms * 1000, dendrite_current.values / b2.pA,
