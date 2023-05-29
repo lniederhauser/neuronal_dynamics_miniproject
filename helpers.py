@@ -530,7 +530,7 @@ def plot_I_v_w(voltage_monitor, current, title=None, firing_threshold=None, lege
     plt.show()
 
 
-def plot_voltage_derivative_curve(voltage, derivative, title=None, save_figure=False):
+def plot_voltage_derivative_curve(voltage, derivative, title=None, save_figure=False, setlim = False):
     """plots the voltage wrt its derivative
 
         Args:
@@ -542,6 +542,9 @@ def plot_voltage_derivative_curve(voltage, derivative, title=None, save_figure=F
     plt.plot(voltage * 1000, derivative * 1000)
     plt.xlabel("Voltage [mV]", fontsize=12)
     plt.ylabel("Finite difference derivative [mV/ms]", fontsize=12)
+    if setlim:
+        plt.ylim((0, 1))
+        plt.xlim((-80, 40))
     plt.grid()
     plt.title(title, fontsize=14)
     if save_figure:
@@ -755,7 +758,7 @@ def plot_alternating_currents(current1, current2, label1, label2, unit_time=b2.m
 
 
 def plot_external_inputs_and_rates(firing_rate, bursting_rate, soma_current, dendrite_current,
-                                   isBurstProba=False, title=None, savefig=False):
+                                   isBurstProba=False, title=None, savefig=False, ylim = (3, 9)):
 
     # Smoothing with convolution and 10ms window
     rect_10 = np.ones(10)
@@ -780,24 +783,24 @@ def plot_external_inputs_and_rates(firing_rate, bursting_rate, soma_current, den
         title1 = 'Population Smooth Bursting Activity'
 
     ax0b = ax[0].twinx()
-    ax[0].plot(firing_rate, label=label0a)
+    ax[0].plot(firing_rate, label=label0a, c='black')
     ax[0].set_xlabel('Time [ms]', fontsize=20)
     ax[0].set_ylabel(ylabel0a, fontsize=20)
     ax0b.plot(range(0, len(soma_current.values)) * b2.ms * 1000, soma_current.values / b2.pA,
-              label="soma" + '\n' + "input current", c='orange')
+              label="soma" + '\n' + "input current", c='blue')
     ax0b.set_ylabel('Input current [pA]', fontsize=20)
     ax[0].set_title(title0 + ' and external somatic stimulation', fontsize=20)
     ax[0].grid()
     ax[0].legend(loc='best')
     ax0b.legend(loc='lower right')
     if isBurstProba:
-        ax[0].set_ylim((3, 9))
+        ax[0].set_ylim(ylim)
 
     ax1b = ax[1].twinx()
     ax1b.plot(range(0, len(dendrite_current.values)) * b2.ms * 1000, dendrite_current.values / b2.pA,
               label="dendrite" + '\n' + "input current", c='orange')
     ax1b.set_ylabel('Input current [pA]', fontsize=20)
-    ax[1].plot(bursting_rate, label=label1a)
+    ax[1].plot(bursting_rate, label=label1a, c='black')
     ax[1].set_xlabel('Time [ms]', fontsize=20)
     ax[1].set_ylabel(ylabel1a, fontsize=20)
     ax[1].set_title(title1 + ' and external dendritic stimulation', fontsize=20)
