@@ -185,8 +185,6 @@ def simulate_pyramidal_neuron(tau_s, tau_d, C_s, C_d, v_rest, b, v_spike, tau_w_
     neuron.w_s = 0.0 * b2.pA
     neuron.v_d = v_rest
     neuron.w_d = 0.0 * b2.pA
-    # neuron.t_p_1 = 0 * b2.ms
-    # neuron.t_p_2 = 0 * b2.ms
     neuron.t_p = float("inf") * b2.ms  # initiate to a high value so that t !> (t_p + kernel delay)
     neuron.K = 0
 
@@ -241,32 +239,15 @@ def simulate_pyramidal_neuron_noisy(tau_s, tau_d, tau_ou, mu_s, mu_d, sigma_ou, 
     neuron.w_s = 0.0 * b2.pA
     neuron.v_d = v_rest
     neuron.w_d = 0.0 * b2.pA
-    # neuron.t_p_1 = 0 * b2.ms
-    # neuron.t_p_2 = 0 * b2.ms
     neuron.t_p = float("inf") * b2.ms  # initiate to a high value so that t !> (t_p + kernel delay)
     neuron.K = 0
 
-    state_monitor = b2.StateMonitor(neuron, ["v_s", "v_d", "w_s", "w_d", "K", "I_s_bg", "I_d_bg", "I_s", "I_d"], record=True)
+    state_monitor = b2.StateMonitor(neuron, ["v_s", "v_d", "w_s", "w_d", "K", "I_s_bg", "I_d_bg", "I_s", "I_d"],
+                                    record=True)
     spike_monitor = b2.SpikeMonitor(neuron)
 
     b2.run(simulation_time)
     return state_monitor, spike_monitor
-
-
-'''
-def compute_firing_rate(spike_monitor, sim_time=800, time_step=1 * b2.ms):
-    spike_times = np.array(spike_monitor.t / b2.ms)  # When each spike occurs in order of time
-    spike_neurons = np.array(spike_monitor.i)  # Which neuron fires at the spike time
-    time = np.arange(sim_time)
-    t_dig = np.digitize(t, time)
-    values = np.unique(t_dig)
-    firing_rate = np.zeros(sim_time)
-    for v in values:
-        firing_rate[v - 1] += (t_dig == v).sum()
-    firing_rate = firing_rate / (sim_time * time_step)
-
-    return firing_rate
-'''
 
 
 def compute_spike_and_burst_scatter(spike_monitor, nb_neurons, sim_time):
@@ -305,7 +286,6 @@ def compute_spike_and_burst_scatter(spike_monitor, nb_neurons, sim_time):
 
         if spikes_before == 0 and spikes_after == 0:
             single_spike_scatter[ind[0], ind[1]] = 1
-        # else:
         elif spikes_before == 0:
             burst_scatter[ind[0], ind[1]] = 1
     
@@ -471,7 +451,8 @@ def get_alternating_current(t_start, t_end, unit_time, high_current, low_current
 
 
 ######################################### PLOTTING ######################################################
-def plot_I_v_w(voltage_monitor, current, title=None, firing_threshold=None, legend_location=0, setylim=False, savefig=False):
+def plot_I_v_w(voltage_monitor, current, title=None, firing_threshold=None, legend_location=0, setylim=False,
+               savefig=False):
     """plots voltage and current .
 
     Args:
@@ -481,6 +462,7 @@ def plot_I_v_w(voltage_monitor, current, title=None, firing_threshold=None, lege
         firing_threshold (Quantity, optional): if set to a value, the firing threshold is plotted.
         legend_location (int): legend location. default = 0 (="best")
         savefig (Bool): If True, the figure is saved in the directory /plots, default = False
+        setylim (Bool): If True, the y-axis of the figure is fixed for all plots, default = False
     """
 
     assert isinstance(voltage_monitor, b2.StateMonitor), "voltage_monitor is not of type StateMonitor"
@@ -538,7 +520,9 @@ def plot_voltage_derivative_curve(voltage, derivative, title=None, save_figure=F
             derivative (array): derivative of the voltage
             title (string, optional): title of the figure
             save_figure (Bool, optional): If True, the figure is saved in the directory /plots, default = False
+            setlim (Bool): If True, the y-axis of the figure is fixed for all plots, default = False
     """
+
     plt.plot(voltage * 1000, derivative * 1000)
     plt.xlabel("Voltage [mV]", fontsize=12)
     plt.ylabel("Finite difference derivative [mV/ms]", fontsize=12)
@@ -607,6 +591,7 @@ def plot_pyramidal(voltage_monitor, current_s, current_d, title=None, firing_thr
         firing_threshold (Quantity, optional): if set to a value, the firing threshold is plotted.
         legend_location (int): legend location. default = 0 (="best")
         savefig (bool): If True, the figure is saved in the directory /plots, default = False
+        set_ylim (Bool): If True, the y-axis of the figure is fixed for all plots, default = False
 
     """
 
@@ -620,7 +605,7 @@ def plot_pyramidal(voltage_monitor, current_s, current_d, title=None, firing_thr
 
     # Plot the input currents of the soma
     c = current_s(voltage_monitor.t, 0)
-    ax[0, 0].plot(voltage_monitor.t / b2.ms, c /b2.nA, lw=2, label="soma")
+    ax[0, 0].plot(voltage_monitor.t / b2.ms, c / b2.nA, lw=2, label="soma")
     # Plot input current of dendrite
     c_d = current_d(voltage_monitor.t, 0)
     ax[0, 0].plot(voltage_monitor.t/b2.ms, c_d/b2.nA, label="dendrite")
@@ -655,9 +640,9 @@ def plot_pyramidal(voltage_monitor, current_s, current_d, title=None, firing_thr
         ax[1, 0].set_ylim((-85, 15))
 
     # Plot the Soma adaptive term w_s
-    ax[1, 1].plot(time_values_ms, voltage_monitor[0].w_s /b2.nA, lw=2, label="soma")
+    ax[1, 1].plot(time_values_ms, voltage_monitor[0].w_s / b2.nA, lw=2, label="soma")
     # Plot the dendrite adaptive term w_d
-    ax[1, 1].plot(time_values_ms, voltage_monitor[0].w_d /b2.nA, lw=2, label="dendrite")
+    ax[1, 1].plot(time_values_ms, voltage_monitor[0].w_d / b2.nA, lw=2, label="dendrite")
     ax[1, 1].set_ylabel("Adaption Variable [nA]", fontsize=12)
     ax[1, 1].set_xlabel("t [ms]", fontsize=12)
     ax[1, 1].legend()
@@ -692,28 +677,28 @@ def plot_noise_and_noisy_currents(voltage_monitor, title=None, savefig=False):
     fig, ax = plt.subplots(2, 2, figsize=(15, 8))
 
     # Plot the current at the soma
-    ax[0, 0].plot(voltage_monitor.t / b2.ms, voltage_monitor[0].I_s /b2.nA, lw=2)
+    ax[0, 0].plot(voltage_monitor.t / b2.ms, voltage_monitor[0].I_s / b2.nA, lw=2)
     ax[0, 0].set_ylabel("Current [nA]", fontsize=12)
     ax[0, 0].set_xlabel("t [ms]", fontsize=12)
     ax[0, 0].set_title("Total Current at Soma")
     ax[0, 0].grid()
 
     # Plot the current at the dendrite
-    ax[0, 1].plot(voltage_monitor.t / b2.ms, voltage_monitor[0].I_d /b2.nA, lw=2)
+    ax[0, 1].plot(voltage_monitor.t / b2.ms, voltage_monitor[0].I_d / b2.nA, lw=2)
     ax[0, 1].set_ylabel("Current [nA]", fontsize=12)
     ax[0, 1].set_xlabel("t [ms]", fontsize=12)
     ax[0, 1].set_title("Total Current at Dendrite")
     ax[0, 1].grid()
 
     # Plot the current noise at the soma
-    ax[1, 0].plot(voltage_monitor.t / b2.ms, voltage_monitor[0].I_s_bg /b2.nA, lw=2)
+    ax[1, 0].plot(voltage_monitor.t / b2.ms, voltage_monitor[0].I_s_bg / b2.nA, lw=2)
     ax[1, 0].set_ylabel("Noise [nA]", fontsize=12)
     ax[1, 0].set_xlabel("t [ms]", fontsize=12)
     ax[1, 0].set_title("Noise at Soma")
     ax[1, 0].grid()
 
     # Plot the current noise at the dendrite
-    ax[1, 1].plot(voltage_monitor.t / b2.ms, voltage_monitor[0].I_s_bg /b2.nA, lw=2)
+    ax[1, 1].plot(voltage_monitor.t / b2.ms, voltage_monitor[0].I_s_bg / b2.nA, lw=2)
     ax[1, 1].set_ylabel("Noise [nA]", fontsize=12)
     ax[1, 1].set_xlabel("t [ms]", fontsize=12)
     ax[1, 1].set_title("Noise at Dendrite")
@@ -730,7 +715,7 @@ def plot_noise_and_noisy_currents(voltage_monitor, title=None, savefig=False):
 
 
 def plot_alternating_currents(current1, current2, label1, label2, unit_time=b2.ms, unit_amp=b2.pA, title=None,
-                                savefig=False):
+                              savefig=False):
 
     """plots two currents on the same graph wrt time, with the x-axis in ms and the y-axis in pA
         Args:
@@ -758,7 +743,7 @@ def plot_alternating_currents(current1, current2, label1, label2, unit_time=b2.m
 
 
 def plot_external_inputs_and_rates(firing_rate, bursting_rate, soma_current, dendrite_current,
-                                   isBurstProba=False, title=None, savefig=False, ylim = (3, 9)):
+                                   isBurstProba=False, title=None, savefig=False, ylim=(3, 9)):
 
     # Smoothing with convolution and 10ms window
     rect_10 = np.ones(10)
